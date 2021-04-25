@@ -1,2 +1,3 @@
 # Airda
-the distributed runner wirtten in rust
+the distributed runner written in rust
+

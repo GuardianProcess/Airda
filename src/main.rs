@@ -1,12 +1,6 @@
 #![feature(try_trait)]
 
-mod errors;
-mod resource;
-mod execution;
-mod controller;
-mod config;
-mod utils;
-
+extern crate Airda;
 #[macro_use]
 extern crate failure;
 

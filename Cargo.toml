@@ -3,7 +3,6 @@ name = "Airda"
 version = "0.1.0"
 authors = ["venmosnake <VenmoSnake@icloud.com>"]
 edition = "2018"
-license-file = "LICENSE"
 license = "APACHE"
 description = "the distributed runner written in rust"
 

@@ -1,6 +1,10 @@
 use std::ops::BitXor;
+
+// use std::io::{Error, Read};
+
+#[cfg(feature = "usb")]
 use tokio_util::codec::Decoder;
-use std::io::{Error, Read};
+
 
 /// ADB AdbCommand Type
 /// Message主要包含以下类型
@@ -73,6 +77,7 @@ impl Into<Vec<u8>> for AdbCommand {
 /// 处于传输层的`Message`包含24字节header组成的Payload。
 /// Header由无线传输的6个小端序32字节组成。
 /// 如果收到无效，损坏的header，或无法识别的命令会导致远程链接关闭
+#[cfg(feature = "usb")]
 pub struct AdbMessage {
 	/// command identifier constant (A_CNXN, ...)
 	/// 固定不变的命令标示符，例如CNXN等
@@ -96,6 +101,7 @@ pub struct AdbMessage {
 	data: Vec<u8>,
 }
 
+#[cfg(feature = "usb")]
 impl AdbMessage {
 	pub fn create(command: AdbCommand, arg0: u32, arg1: u32, data: Vec<u8>) -> Self {
 		let magic = command ^ 0xFFFFFFFF;
@@ -113,6 +119,7 @@ impl AdbMessage {
 	}
 }
 
+#[cfg(feature = "usb")]
 #[repr(C)]
 pub struct RawMessage {
 	command: u32,
@@ -123,6 +130,7 @@ pub struct RawMessage {
 	magic: u32,
 }
 
+#[cfg(feature = "usb")]
 impl Decoder for AdbMessage {
 	type Item = Vec<u8>;
 	type Error = std::io::Error;

@@ -13,4 +13,6 @@ bytes = "1.0.1"
 
 
 [features]
+default=["server"]
+server = []
 usb = []

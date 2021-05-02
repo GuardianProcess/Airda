@@ -8,6 +8,7 @@ extern crate failure;
 mod result;
 mod errors;
 mod protocol;
+mod adb;
 
 pub use client::{AdbClient, AdbConfig};
 pub use result::CheckResult;

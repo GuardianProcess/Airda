@@ -9,6 +9,7 @@ use crate::errors::AdbError;
 
 /// Adb 配置选项，用于Adb Client配置
 /// AdbConfig实现Default trait，意味着根据不同平台上尝试查找adb路径
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdbConfig {
 	/// adb 二进制路径，MACOS为/usr/local/bin/adb
 	/// Windows则会尝试获取ANDROID_HONE环境变量
@@ -78,6 +79,7 @@ impl From<&[u8; 4]> for AdbConnState {
 
 /// adb 客户端实现adb server通信该版本不支持USB直连
 /// 某些功能无法使用、adb server本身完成，需要配置adb二进制路径
+#[derive(Debug)]
 pub struct AdbClient {
 	/// adb客户端配置
 	pub config: AdbConfig,
@@ -88,7 +90,7 @@ impl AdbClient {
 	/// 创建AdbClient并链接adb server
 	/// # Result
 	/// 如果无法链接到adb server返回`io::Error`
-	pub fn new(config: AdbConfig) -> io::Result<Self> {
+	pub fn new(config: AdbConfig) -> Result<Self> {
 		let tcp = TcpStream::connect(format!("{}:{}", config.adb_host, config.adb_port))?;
 		Ok(Self {
 			config,
@@ -105,7 +107,8 @@ impl AdbClient {
 		self.tcp.read_to_string(buf)
 	}
 
-	pub fn read_string(&mut self) -> Result<String> {
+
+	pub(crate) fn read_string(&mut self) -> Result<String> {
 		// adb返回数据并非整形数组而是字符串，因此需要转换为字符串后方可使用
 		// 解析消息长度
 		let mut len = [0u8; 4];
@@ -116,7 +119,19 @@ impl AdbClient {
 		Self::read_n_string(&mut self.tcp, u32_len as u64)
 	}
 
-	fn read_n_string<R>(read: R, n: u64) -> Result<String> where R: Read {
+	pub(crate) fn read_n_bytes<R>(read: R, n: u64) -> Result<Vec<u8>> where R: Read {
+		let mut res = Vec::new();
+		let read_size = read.take(n).read_to_end(&mut res)?;
+		if read_size < n as usize {
+			return Err(AdbError::IoError {
+				why: io::Error::new(io::ErrorKind::UnexpectedEof,
+				                    format!("expect read {} bytes but read {} bytes", n, read_size))
+			})
+		}
+		Ok(res)
+	}
+
+	pub(crate) fn read_n_string<R>(read: R, n: u64) -> Result<String> where R: Read {
 		let mut chunk = read.take(n);
 		let mut res = String::new();
 		let read_size = chunk.read_to_string(&mut res)?;
@@ -130,22 +145,26 @@ impl AdbClient {
 	}
 
 
-	pub fn check_ok(&mut self) -> io::Result<()> {
+	pub(crate) fn check_ok(&mut self) -> Result<()> {
 		let mut code = [0u8; 4];
 		self.tcp.read_exact(&mut code)?;
 		let state = AdbConnState::from(&code);
 		if state == AdbConnState::FAIL {
-			return Err(io::Error::new(io::ErrorKind::ConnectionRefused, "got wrong state from adb server"))
+			return Err(AdbError::IoError {
+				why: io::Error::new(io::ErrorKind::ConnectionRefused, "got wrong state from adb server")
+			})
 		}
 		Ok(())
 	}
 
-	pub fn recv_full(&mut self, buf: &mut [u8]) -> io::Result<()> {
-		self.tcp.read_exact(buf)
+	pub(crate) fn recv_full(&mut self, buf: &mut [u8]) -> Result<()> {
+		self.tcp.read_exact(buf)?;
+		Ok(())
 	}
 
-	///
-	pub fn send(&mut self, command: &[u8]) -> io::Result<usize> {
+	/// 发送adb协议，send方法会对发送的协议计算长度
+	/// 并按照<header><command>形式发送至adb server
+	pub(crate) fn send(&mut self, command: &[u8]) -> Result<usize> {
 		let size = u32::to_be_bytes("host:version".len() as u32)
 			.iter()
 			.fold(String::new(), |mut x, ch| {
@@ -155,7 +174,14 @@ impl AdbClient {
 		let mut buffer = BytesMut::new();
 		buffer.extend_from_slice(size.as_bytes());
 		buffer.extend_from_slice(command);
-		self.tcp.write(buffer.as_ref())
+		let size = self.tcp.write(buffer.as_ref())?;
+		Ok(size)
 	}
 }
 
+impl Clone for AdbClient {
+	fn clone(&self) -> Self {
+		let config = self.config.clone();
+		AdbClient::new(config).unwrap()
+	}
+}

@@ -1,9 +1,9 @@
-use std::io;
 use crate::client::{AdbClient, AdbConfig};
 use crate::Result;
+use std::str::FromStr;
 
 #[test]
-fn test_adb_client() -> io::Result<()> {
+fn test_adb_client() -> Result<()> {
 	let config = AdbConfig::new("/usr/local/bin/adb", "127.0.0.1", 5037);
 	let _adb = AdbClient::new(config)?;
 	Ok(())
@@ -17,6 +17,6 @@ fn test_get_adb_version() -> Result<()> {
 	adb.send(command.as_bytes())?;
 	adb.check_ok()?;
 	let res = adb.read_string()?;
-	println!("{}", res);
+	assert_eq!(Ok(29), u32::from_str(res.as_str()));
 	Ok(())
 }

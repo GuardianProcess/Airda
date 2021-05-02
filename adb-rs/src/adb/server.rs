@@ -7,7 +7,6 @@ pub struct AdbDevice {
 	#[cfg(feature = "server")]
 	inner: AdbClient,
 	serial: String,
-
 }
 
 impl AdbDevice {
@@ -18,19 +17,23 @@ impl AdbDevice {
 		}
 	}
 
-
+	/// 获取当前设备的所有转发列表
 	pub fn forward_list(&mut self) -> Result<Vec<MappingDevice>> {
 		forward_list(&mut self.inner, Some(&self.serial))
 	}
-
+	/// 获取当前设备的所有反向代理列表
 	pub fn reverse_list(&mut self) -> Result<Vec<MappingDevice>> {
 		reverse_list(&mut self.inner, Some(&self.serial))
 	}
 
+	/// 与设备建立一个转发，adb -s `self.serial` forward tcp:1000 tcp:2000的意思是，将PC端的1000端口收到的数据，转发给到手机中2000端口
+	/// PC可以通过访问自身的2000端口来访问手机的1000端口
 	pub fn forward(&mut self, local: u32, remote: MappingType, norebind: Option<bool>) -> Result<()> {
 		forward(&mut self.inner, &self.serial, local, remote, norebind)
 	}
 
+	/// 与设备建立反向代理，adb -s `self.serial` reverse tcp:1000 tcp:2000的意思是，将手机端的1000端口收到的数据，反向代理到PC中2000端口
+	/// 手机可以访问自身的1000端口来访问PC的2000端口
 	pub fn reverse(&mut self, remote: u32, local: u32) -> Result<()> {
 		reverse(&mut self.inner, &self.serial, remote, local)
 	}
@@ -49,11 +52,17 @@ impl AndroidDebugBridge {
 			inner: client,
 		})
 	}
+
 	#[cfg(feature = "server")]
 	pub fn adb_version(&mut self) -> Result<u32> {
 		let res = self.inner.read_string()?;
 		let version = u32::from_str(res.as_ref())?;
 		Ok(version)
+	}
+
+	/// 获取当所有反向代理列表
+	pub fn reverse_list(&mut self) -> Result<Vec<MappingDevice>> {
+		reverse_list(&mut self.inner, None)
 	}
 
 	pub fn devices(&mut self) -> Result<Vec<AdbDevice>> {

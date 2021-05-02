@@ -51,3 +51,32 @@ impl MappingDevice {
 		}
 	}
 }
+
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub enum DeviceStatus {
+	Online,
+	Offline,
+	Unauthorized,
+	Absent,
+	Unknown
+}
+
+impl FromStr for DeviceStatus {
+	type Err = AdbError;
+
+	fn from_str(s: &str) -> Result<Self, Self::Err> {
+		match s {
+			"online" => Ok(Self::Online),
+			"offline" => Ok(Self::Offline),
+			"unauthorized" => Ok(Self::Unauthorized),
+			"absent" => Ok(Self::Absent),
+			_ => Ok(Self::Unknown),
+		}
+	}
+}
+
+pub struct DeviceEvent {
+	pub(crate) present: Option<bool>,
+	pub(crate) serial: String,
+	pub(crate) status: DeviceStatus,
+}

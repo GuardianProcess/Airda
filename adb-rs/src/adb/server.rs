@@ -1,6 +1,8 @@
 use crate::{AdbClient, AdbConfig, Result};
-use std::str::{FromStr, SplitAsciiWhitespace};
-use crate::adb::base_type::{MappingDevice, MappingType};
+use std::str::{FromStr};
+use crate::adb::base_type::{MappingDevice, MappingType, DeviceEvent, DeviceStatus};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::thread;
 
 
 pub struct AdbDevice {
@@ -60,11 +62,74 @@ impl AndroidDebugBridge {
 		Ok(version)
 	}
 
+	#[cfg(feature = "server")]
+	pub fn kill_server(&mut self) -> Result<()> {
+		// todo:check server is online
+		self.inner.send("host:kill".as_bytes())?;
+		self.inner.check_ok()?;
+		Ok(())
+	}
+	#[cfg(feature = "server")]
+	pub fn connect(&mut self, addr: &String) -> Result<()> {
+		self.inner.send(format!("host:connect:{}", addr).as_bytes())?;
+		self.inner.check_ok()?;
+		//todo: check connect result
+		self.inner.read_string()?;
+		Ok(())
+	}
+
+	#[cfg(feature = "server")]
+	pub fn disconnect(&mut self, addr: &String) -> Result<String> {
+		self.inner.send(format!("host:disconnect:{}", addr).as_bytes())?;
+		self.inner.check_ok()?;
+		self.inner.read_string()
+	}
+
+	#[cfg(feature = "server")]
+	pub fn watch_device(&mut self) -> Receiver<DeviceEvent> {
+		let (mut sender, receiver) = channel();
+		let mut th_client = self.inner.clone();
+		thread::spawn(move || {
+			AndroidDebugBridge::_watch_device(&mut sender, &mut th_client)
+		});
+		receiver
+	}
+
+	fn _watch_device(receiver: &mut Sender<DeviceEvent>, th_client: &mut AdbClient) -> Result<()> {
+		th_client.send("host:track-devices".as_bytes())?;
+		th_client.check_ok()?;
+		loop {
+			let raw_info = th_client.read_string()?;
+			let events = raw_info
+				.split("\n")
+				.map(|line| line.split_ascii_whitespace())
+				.fold(Vec::new(), |mut acc, mut item| {
+					let serial = item.next().map(|x| x.to_string());
+					let status = item.next();
+					if serial.is_some() && status.is_some() {
+						acc.push(DeviceEvent {
+							present: None,
+							serial: serial.unwrap(),
+							status: DeviceStatus::from_str(status.unwrap()).unwrap(),
+						})
+					}
+					acc
+				});
+			for event in events {
+				if let Err(_) = receiver.send(event) {
+					break;
+				}
+			}
+		}
+	}
+
+
 	/// 获取当所有反向代理列表
 	pub fn reverse_list(&mut self) -> Result<Vec<MappingDevice>> {
 		reverse_list(&mut self.inner, None)
 	}
 
+	/// 获取当所有设备，包括可用和不可用
 	pub fn devices(&mut self) -> Result<Vec<AdbDevice>> {
 		self.inner.send("host:devices".as_bytes())?;
 		self.inner.check_ok()?;

@@ -1,6 +1,6 @@
 use crate::{AdbClient, AdbConfig, Result};
 use std::str::{FromStr, SplitAsciiWhitespace};
-use crate::adb::base_type::{ForwardDevice, MappingType};
+use crate::adb::base_type::{MappingDevice, MappingType};
 
 
 pub struct AdbDevice {
@@ -16,6 +16,15 @@ impl AdbDevice {
 			inner,
 			serial
 		}
+	}
+
+
+	pub fn forward_list(&mut self) -> Result<Vec<MappingDevice>> {
+		forward_list(&mut self.inner, Some(&self.serial))
+	}
+
+	pub fn reverse_list(&mut self) -> Result<Vec<MappingDevice>> {
+		reverse_list(&mut self.inner, Some(&self.serial))
 	}
 
 	pub fn forward(&mut self, local: u32, remote: MappingType, norebind: Option<bool>) -> Result<()> {
@@ -64,7 +73,7 @@ impl AndroidDebugBridge {
 }
 
 
-fn forward_list(client: &mut AdbClient, serial: Option<&String>) -> Result<Vec<ForwardDevice>> {
+fn forward_list(client: &mut AdbClient, serial: Option<&String>) -> Result<Vec<MappingDevice>> {
 	let cmd = if let Some(s) = serial {
 		format!("host-serial:{}:list-forward", s)
 	} else {
@@ -79,20 +88,18 @@ fn forward_list(client: &mut AdbClient, serial: Option<&String>) -> Result<Vec<F
 		.map(|line| line.split_ascii_whitespace())
 		.fold(Vec::new(), |mut acc, mut item| {
 			// <serial local remote>
-			handle_forward(&mut acc, &mut item);
+			let serial = item.next().map(|data| data.to_string());
+			let local = item.next();
+			let remote = item.next();
+			check_and_push(&mut acc, serial, local, remote);
 			acc
 		});
 	Ok(res)
 }
 
-fn handle_forward(acc: &mut Vec<ForwardDevice>, item: &mut SplitAsciiWhitespace) {
-	let serial = item.next();
-	let local = item.next();
-	let remote = item.next();
+fn check_and_push(acc: &mut Vec<MappingDevice>, serial: Option<String>, local: Option<&str>, remote: Option<&str>) {
 	if serial.is_some() && local.is_some() && remote.is_some() {
-		if let Ok(port) = u32::from_str(local.unwrap()) {
-			acc.push(ForwardDevice::new(serial.unwrap().to_string(), port, remote.unwrap()));
-		}
+		acc.push(MappingDevice::new(serial, local.unwrap(), remote.unwrap()));
 	}
 }
 
@@ -120,4 +127,28 @@ fn reverse(client: &mut AdbClient, serial: &String, remote: u32, local: u32) -> 
 	let cmds = vec!["reverse:forward", sub_cmd.as_str()];
 	client.send(cmds.join(":").as_bytes())?;
 	Ok(())
+}
+
+fn reverse_list(client: &mut AdbClient, serial: Option<&String>) -> Result<Vec<MappingDevice>> {
+	let cmd = if let Some(s) = serial {
+		format!("host:transport:{}", s)
+	} else {
+		String::from("host:transport")
+	};
+	client.send(cmd.as_bytes())?;
+	client.check_ok()?;
+	client.send("reverse:list-forward".as_bytes())?;
+	client.check_ok()?;
+	let result = client.read_string()?;
+	// it possible to reuse `forward_list`?
+	let devices = result.split("\n")
+		.map(|line| line.split_ascii_whitespace())
+		.fold(Vec::new(), |mut acc, mut item| {
+			let serial = item.next().map(|data| data.to_string());
+			let remote = item.next();
+			let local = item.next();
+			check_and_push(&mut acc, serial, local, remote);
+			acc
+		});
+	Ok(devices)
 }

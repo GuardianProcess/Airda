@@ -1,7 +1,7 @@
 mod server;
 mod base_type;
 
-pub use base_type::{MappingType, ForwardDevice};
+pub use base_type::{MappingType, MappingDevice};
 
 
 mod test {

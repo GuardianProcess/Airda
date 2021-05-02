@@ -20,19 +20,20 @@ impl FromStr for MappingType {
 
 
 #[derive(Debug, Eq, PartialEq, Clone)]
-pub struct ForwardDevice {
-	serial: String,
-	local: u32,
+pub struct MappingDevice {
+	serial: Option<String>,
+	local: MappingType,
 	remote: MappingType,
 }
 
-impl ForwardDevice {
-	pub fn new(serial: String, local: u32, remote: &str) -> Self {
+impl MappingDevice {
+	pub fn new(serial: Option<String>, local: &str, remote: &str) -> Self {
 		// cause we return nothing err use unwrap is safe
 		let remote_type = MappingType::from_str(remote).unwrap();
+		let local_type = MappingType::from_str(local).unwrap();
 		Self {
 			serial,
-			local,
+			local: local_type,
 			remote: remote_type,
 		}
 	}

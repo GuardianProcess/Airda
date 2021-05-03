@@ -7,20 +7,28 @@ use std::time::Duration;
 use std::fmt::Display;
 
 
+/// android设备抽象，每个AdbDevice都持有一份AdbClient拷贝
 pub struct AdbDevice {
 	#[cfg(feature = "server")]
 	inner: AdbClient,
+	/// 设备序列号
 	serial: String,
+	/// 设备状态
+	status: DeviceStatus,
 }
 
 impl AdbDevice {
-	fn new(inner: AdbClient, serial: String) -> Self {
+	fn new(inner: AdbClient, serial: String, status: DeviceStatus) -> Self {
 		Self {
 			inner,
-			serial
+			serial,
+			status,
 		}
 	}
 
+	/// 在Android设备中执行shell命令
+	/// 如果`stream`为true，则返回 `ShellResult::Stream`,否则返回`ShellResult::Output`
+	/// 其中`timeout`会同时设置写超时和读超时
 	pub fn shell<S>(&mut self, command: S, stream: bool, timeout: Option<Duration>) -> Result<ShellResult> where S: Into<String> + Display {
 		let cmd = format!("host:transport:{}", self.serial);
 		if stream {
@@ -147,10 +155,29 @@ impl AndroidDebugBridge {
 		}
 	}
 
-
 	/// 获取当所有反向代理列表
 	pub fn reverse_list(&mut self) -> Result<Vec<MappingDevice>> {
 		reverse_list(&mut self.inner, None)
+	}
+
+	/// 根据serial获取设备
+	pub fn find_devices(&mut self, serial: String) -> Result<Option<AdbDevice>> {
+		let mut find_result = self.available_devices().and_then(|d| {
+			let res = d.into_iter().filter(|dev| dev.serial == serial).collect::<Vec<AdbDevice>>();
+			Ok(res)
+		})?;
+		Ok(find_result.pop())
+	}
+
+	/// 获取当所有可用的设备
+	pub fn available_devices(&mut self) -> Result<Vec<AdbDevice>> {
+		self.devices().and_then(|x| {
+			let res = x
+				.into_iter()
+				.filter(|dev| dev.status == DeviceStatus::Online)
+				.collect::<Vec<AdbDevice>>();
+			Ok(res)
+		})
 	}
 
 	/// 获取当所有设备，包括可用和不可用
@@ -158,14 +185,22 @@ impl AndroidDebugBridge {
 		self.inner.send("host:devices".as_bytes())?;
 		self.inner.check_ok()?;
 		let device_str = self.inner.read_string()?;
-		let trim_space: &[_] = &[' ', '\t'];
 		let devices = device_str
 			.split("\n")
-			.filter(|x| !x.trim_matches(trim_space).is_empty())
-			.map(|line| {
-				let serial = line.to_string();
-				AdbDevice::new(self.inner.clone(), serial)
-			}).collect::<Vec<AdbDevice>>();
+			.map(|line| line.split_ascii_whitespace())
+			.fold(Vec::new(), |mut acc, mut item| {
+				let serial = item.next();
+				let status = item.next();
+				if serial.is_some() && status.is_some() {
+					let dev = AdbDevice::new(
+						self.inner.clone(),
+						serial.unwrap().to_string(),
+						DeviceStatus::from_str(status.unwrap()).unwrap(),
+					);
+					acc.push(dev);
+				}
+				acc
+			});
 		Ok(devices)
 	}
 }

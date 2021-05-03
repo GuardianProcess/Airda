@@ -6,6 +6,7 @@ use bytes::BytesMut;
 use std::str::FromStr;
 use super::Result;
 use crate::errors::AdbError;
+use std::time::Duration;
 
 /// Adb 配置选项，用于Adb Client配置
 /// AdbConfig实现Default trait，意味着根据不同平台上尝试查找adb路径
@@ -98,17 +99,25 @@ impl AdbClient {
 		})
 	}
 
+	pub fn set_timeout(&self,timeout:Option<Duration>) -> Result<()> {
+		self.tcp.set_read_timeout(timeout)?;
+		self.tcp.set_write_timeout(timeout)?;
+		Ok(())
+	}
+
 	pub fn check_adb_is_fine(&self) -> CheckResult<()> {
 		//todo: send data to query adb client, make sure adb it work
 		Ok(())
 	}
 
-	pub fn recv_to_string(&mut self, buf: &mut String) -> io::Result<usize> {
-		self.tcp.read_to_string(buf)
+	pub fn rend_full_string(&mut self) -> Result<String> {
+		let mut buf = String::new();
+		self.tcp.read_to_string(&mut buf)?;
+		Ok(buf)
 	}
 
 
-	pub(crate) fn read_string(&mut self) -> Result<String> {
+	pub fn read_string(&mut self) -> Result<String> {
 		// adb返回数据并非整形数组而是字符串，因此需要转换为字符串后方可使用
 		// 解析消息长度
 		let mut len = [0u8; 4];
@@ -119,7 +128,7 @@ impl AdbClient {
 		Self::read_n_string(&mut self.tcp, u32_len as u64)
 	}
 
-	pub(crate) fn read_n_bytes<R>(read: R, n: u64) -> Result<Vec<u8>> where R: Read {
+	pub fn read_n_bytes<R>(read: R, n: u64) -> Result<Vec<u8>> where R: Read {
 		let mut res = Vec::new();
 		let read_size = read.take(n).read_to_end(&mut res)?;
 		if read_size < n as usize {
@@ -131,7 +140,7 @@ impl AdbClient {
 		Ok(res)
 	}
 
-	pub(crate) fn read_n_string<R>(read: R, n: u64) -> Result<String> where R: Read {
+	pub fn read_n_string<R>(read: R, n: u64) -> Result<String> where R: Read {
 		let mut chunk = read.take(n);
 		let mut res = String::new();
 		let read_size = chunk.read_to_string(&mut res)?;
@@ -145,7 +154,7 @@ impl AdbClient {
 	}
 
 
-	pub(crate) fn check_ok(&mut self) -> Result<()> {
+	pub fn check_ok(&mut self) -> Result<()> {
 		let mut code = [0u8; 4];
 		self.tcp.read_exact(&mut code)?;
 		let state = AdbConnState::from(&code);
@@ -157,14 +166,14 @@ impl AdbClient {
 		Ok(())
 	}
 
-	pub(crate) fn recv_full(&mut self, buf: &mut [u8]) -> Result<()> {
+	pub fn recv_full(&mut self, buf: &mut [u8]) -> Result<()> {
 		self.tcp.read_exact(buf)?;
 		Ok(())
 	}
 
 	/// 发送adb协议，send方法会对发送的协议计算长度
 	/// 并按照<header><command>形式发送至adb server
-	pub(crate) fn send(&mut self, command: &[u8]) -> Result<usize> {
+	pub fn send(&mut self, command: &[u8]) -> Result<usize> {
 		let size = u32::to_be_bytes("host:version".len() as u32)
 			.iter()
 			.fold(String::new(), |mut x, ch| {

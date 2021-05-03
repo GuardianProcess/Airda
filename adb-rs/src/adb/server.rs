@@ -1,8 +1,10 @@
 use crate::{AdbClient, AdbConfig, Result};
 use std::str::{FromStr};
-use crate::adb::base_type::{MappingDevice, MappingType, DeviceEvent, DeviceStatus};
+use crate::adb::base_type::{MappingDevice, MappingType, DeviceEvent, DeviceStatus, ShellResult};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
+use std::time::Duration;
+use std::fmt::Display;
 
 
 pub struct AdbDevice {
@@ -17,6 +19,26 @@ impl AdbDevice {
 			inner,
 			serial
 		}
+	}
+
+	pub fn shell<S>(&mut self, command: S, stream: bool, timeout: Option<Duration>) -> Result<ShellResult> where S: Into<String> + Display {
+		let cmd = format!("host:transport:{}", self.serial);
+		if stream {
+			let mut given_client = self.inner.clone();
+			AdbDevice::send_shell(command, &cmd, &mut given_client, timeout)?;
+			return Ok(ShellResult::Stream(given_client));
+		}
+		AdbDevice::send_shell(command, &cmd, &mut self.inner, timeout)?;
+		Ok(ShellResult::Output(self.inner.rend_full_string()?))
+	}
+
+	fn send_shell<S>(command: S, cmd: &String, given_client: &mut AdbClient, timeout: Option<Duration>) -> Result<()> where S: Into<String> + Display {
+		given_client.set_timeout(timeout)?;
+		given_client.send(cmd.as_bytes())?;
+		given_client.check_ok()?;
+		given_client.send(format!("shell:{}", command).as_bytes())?;
+		given_client.check_ok()?;
+		Ok(())
 	}
 
 	/// 获取当前设备的所有转发列表
@@ -69,6 +91,7 @@ impl AndroidDebugBridge {
 		self.inner.check_ok()?;
 		Ok(())
 	}
+
 	#[cfg(feature = "server")]
 	pub fn connect(&mut self, addr: &String) -> Result<()> {
 		self.inner.send(format!("host:connect:{}", addr).as_bytes())?;
@@ -115,6 +138,7 @@ impl AndroidDebugBridge {
 					}
 					acc
 				});
+			//todo: check different?
 			for event in events {
 				if let Err(_) = receiver.send(event) {
 					break;

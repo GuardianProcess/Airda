@@ -1,5 +1,6 @@
 use std::str::FromStr;
 use crate::errors::AdbError;
+use crate::AdbClient;
 
 /// 设备映射类型，分为IPC模式和TCP模式
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -75,8 +76,17 @@ impl FromStr for DeviceStatus {
 	}
 }
 
+
 pub struct DeviceEvent {
-	pub(crate) present: Option<bool>,
-	pub(crate) serial: String,
-	pub(crate) status: DeviceStatus,
+	pub present: Option<bool>,
+	pub serial: String,
+	pub status: DeviceStatus,
+}
+
+/// adb shell类型
+pub enum ShellResult {
+	/// 执行shell后的输出内容
+	Output(String),
+	/// 执行shell命令后需要持续读取/写入的类型
+	Stream(AdbClient)
 }

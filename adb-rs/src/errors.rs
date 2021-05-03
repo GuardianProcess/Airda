@@ -1,7 +1,5 @@
-use std::num::ParseIntError;
 use std::io;
-use std::path::Path;
-use std::fmt::Error;
+use std::num::ParseIntError;
 
 #[derive(Debug, Fail)]
 pub enum AdbError {
@@ -20,6 +18,11 @@ pub enum AdbError {
 	#[fail(display = "failed to write msg to adb server, cause {}", cause)]
 	WriteMsgErr {
 		cause: String
+	},
+	#[fail(display = "failed to transfer file {} to android device", filename)]
+	FileTransferErr {
+		filename: String,
+		cause: String,
 	}
 }
 

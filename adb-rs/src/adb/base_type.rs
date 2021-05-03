@@ -1,6 +1,7 @@
 use std::str::FromStr;
 use crate::errors::AdbError;
 use crate::AdbClient;
+use chrono::NaiveDateTime;
 
 /// 设备映射类型，分为IPC模式和TCP模式
 #[derive(Debug, Eq, PartialEq, Clone)]
@@ -77,6 +78,7 @@ impl FromStr for DeviceStatus {
 }
 
 
+#[derive(Debug, Eq, PartialEq)]
 pub struct DeviceEvent {
 	pub present: Option<bool>,
 	pub serial: String,
@@ -89,4 +91,12 @@ pub enum ShellResult {
 	Output(String),
 	/// 执行shell命令后需要持续读取/写入的类型
 	Stream(AdbClient)
+}
+
+#[derive(Debug)]
+pub struct RemoteFileInfo {
+	pub mode: u32,
+	pub size: usize,
+	pub timestamp: NaiveDateTime,
+	pub path: String
 }

@@ -1,5 +1,7 @@
 use std::num::ParseIntError;
 use std::io;
+use std::path::Path;
+use std::fmt::Error;
 
 #[derive(Debug, Fail)]
 pub enum AdbError {
@@ -10,6 +12,22 @@ pub enum AdbError {
 	#[fail(display = "got io error when using adb server connection {}", why)]
 	IoError {
 		why: io::Error,
+	},
+	#[fail(display = "transfer file error cause file path {} invalid", path)]
+	FilePathErr {
+		path: String,
+	},
+	#[fail(display = "failed to write msg to adb server, cause {}", cause)]
+	WriteMsgErr {
+		cause: String
+	}
+}
+
+impl From<std::fmt::Error> for AdbError {
+	fn from(e: std::fmt::Error) -> Self {
+		Self::WriteMsgErr {
+			cause: e.to_string()
+		}
 	}
 }
 

@@ -1,7 +1,7 @@
 mod server;
 mod base_type;
 
-pub use base_type::{MappingType, MappingDevice};
+pub use base_type::{MappingType, MappingDevice, DeviceStatus, DeviceEvent, ShellResult};
 
 
 mod test {

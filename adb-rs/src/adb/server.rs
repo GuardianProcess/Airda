@@ -1,11 +1,78 @@
 use crate::{AdbClient, AdbConfig, Result};
 use std::str::{FromStr};
-use crate::adb::base_type::{MappingDevice, MappingType, DeviceEvent, DeviceStatus, ShellResult};
+use crate::adb::base_type::{MappingDevice, MappingType, DeviceEvent, DeviceStatus, ShellResult, RemoteFileInfo};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
-use std::fmt::Display;
+use std::fmt::{Display, Write};
+use std::path::Path;
+use bytes::{BytesMut, BufMut, Buf};
+use std::io::{Write as stdWrite, Read};
+use crate::errors::AdbError;
+use bytes::buf::Reader;
+use chrono::NaiveDateTime;
 
+
+pub struct Transfer<'a> {
+	inner: &'a mut AdbClient,
+	serial: &'a mut String
+}
+
+impl<'a> Transfer<'a> {
+	fn new(dev: &'a mut AdbDevice) -> Self {
+		Self {
+			inner: &mut dev.inner,
+			serial: &mut dev.serial,
+		}
+	}
+
+	fn ready_to_transfer<S, P>(&mut self, command: S, path: P) -> Result<()>
+		where S: Into<String>, P: AsRef<Path> {
+		let _cmd = vec!["host", "transport", self.serial.as_str()];
+		let cmd: String = _cmd.join(":");
+		self.inner.send(cmd.as_bytes())?;
+		self.inner.check_ok()?;
+		self.inner.send("sync:".as_bytes())?;
+		self.inner.check_ok()?;
+		// +-------+----------------------+----+
+		// |COMMAND|LittleEndianPathLength|Path|
+		// +-------+----------------------+----+
+		let mut buffer = BytesMut::new();
+		buffer.write_str(command.into().as_str())?; // COMMAND
+		if let Some(p) = path.as_ref().to_str() {
+			let length = u32::to_le_bytes(p.len() as u32);
+			let mut writer = buffer.writer();
+			writer.write(&length)?; // LittleEndianPathLength
+			writer.write(p.as_bytes())?;// Path
+			return Ok(());
+		}
+		Err(AdbError::FilePathErr { path: path.as_ref().to_string_lossy().to_string() })
+	}
+
+
+	pub fn stat<P>(&mut self, path: P) -> Result<RemoteFileInfo> where P: AsRef<Path> {
+		let ph = path.as_ref().to_string_lossy().to_string();
+		self.ready_to_transfer("STAT", path)?;
+		let mut buffer = self.inner.read_n(12)?;
+		let mut reader = buffer.reader();
+		let mode = parse_u32(&mut reader)?;
+		let size = parse_u32(&mut reader)?;
+		let mtime = parse_u32(&mut reader)?;
+		let file = RemoteFileInfo {
+			mode,
+			size: size as usize,
+			timestamp: NaiveDateTime::from_timestamp(mtime as i64, 0),
+			path: ph,
+		};
+		Ok(file)
+	}
+}
+
+fn parse_u32(reader: &mut Reader<BytesMut>) -> std::io::Result<u32> {
+	let mut chunk = [0u8; 4];
+	reader.read_exact(&mut chunk)?;
+	Ok(u32::from_le_bytes(chunk))
+}
 
 /// android设备抽象，每个AdbDevice都持有一份AdbClient拷贝
 pub struct AdbDevice {
@@ -24,6 +91,12 @@ impl AdbDevice {
 			serial,
 			status,
 		}
+	}
+
+	/// 向设备进行IO操作
+	/// 注意：Transfer中持有self.inner的可变引用，使用时注意生命周期
+	pub fn transfer(&mut self) -> Transfer {
+		Transfer::new( self)
 	}
 
 	/// 在Android设备中执行shell命令

@@ -7,6 +7,7 @@ use std::str::FromStr;
 use super::Result;
 use crate::errors::AdbError;
 use std::time::Duration;
+use std::iter::FromIterator;
 
 /// Adb 配置选项，用于Adb Client配置
 /// AdbConfig实现Default trait，意味着根据不同平台上尝试查找adb路径
@@ -87,6 +88,23 @@ pub struct AdbClient {
 	tcp: TcpStream,
 }
 
+impl Read for AdbClient {
+	fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+		self.tcp.read(buf)
+	}
+}
+
+impl Write for AdbClient {
+	fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+		self.tcp.write(buf)
+	}
+
+	fn flush(&mut self) -> std::io::Result<()> {
+		self.tcp.flush()
+	}
+}
+
+
 impl AdbClient {
 	/// 创建AdbClient并链接adb server
 	/// # Result
@@ -99,7 +117,7 @@ impl AdbClient {
 		})
 	}
 
-	pub fn set_timeout(&self,timeout:Option<Duration>) -> Result<()> {
+	pub fn set_timeout(&self, timeout: Option<Duration>) -> Result<()> {
 		self.tcp.set_read_timeout(timeout)?;
 		self.tcp.set_write_timeout(timeout)?;
 		Ok(())
@@ -128,7 +146,11 @@ impl AdbClient {
 		Self::read_n_string(&mut self.tcp, u32_len as u64)
 	}
 
-	pub fn read_n_bytes<R>(read: R, n: u64) -> Result<Vec<u8>> where R: Read {
+	pub fn read_n(&mut self, n: u64) -> Result<BytesMut> {
+		Self::read_n_bytes(&mut self.tcp, n)
+	}
+
+	pub fn read_n_bytes<R>(read: R, n: u64) -> Result<BytesMut> where R: Read {
 		let mut res = Vec::new();
 		let read_size = read.take(n).read_to_end(&mut res)?;
 		if read_size < n as usize {
@@ -137,7 +159,7 @@ impl AdbClient {
 				                    format!("expect read {} bytes but read {} bytes", n, read_size))
 			})
 		}
-		Ok(res)
+		Ok(BytesMut::from_iter(res))
 	}
 
 	pub fn read_n_string<R>(read: R, n: u64) -> Result<String> where R: Read {
